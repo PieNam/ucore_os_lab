@@ -68,6 +68,8 @@
 #define KSTACKPAGE          2                           // # of pages in kernel stack
 #define KSTACKSIZE          (KSTACKPAGE * PGSIZE)       // sizeof kernel stack
 
+#define MIN_PAGES			10							// the minimum amount of pages to split
+
 #ifndef __ASSEMBLER__
 
 #include <defs.h>

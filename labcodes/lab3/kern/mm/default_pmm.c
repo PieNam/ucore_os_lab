@@ -324,3 +324,4 @@ const struct pmm_manager default_pmm_manager = {
     .nr_free_pages = default_nr_free_pages,
     .check = default_check,
 };
+

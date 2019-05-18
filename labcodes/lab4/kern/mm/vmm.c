@@ -167,6 +167,8 @@ check_vmm(void) {
     check_vma_struct();
     check_pgfault();
 
+    assert(nr_free_pages_store == nr_free_pages());
+
     cprintf("check_vmm() succeeded.\n");
 }
 
@@ -226,6 +228,8 @@ check_vma_struct(void) {
     }
 
     mm_destroy(mm);
+
+    assert(nr_free_pages_store == nr_free_pages());
 
     cprintf("check_vma_struct() succeeded!\n");
 }
@@ -382,7 +386,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     */
         if(swap_init_ok) {
             struct Page *page=NULL;
-                                    //(1）According to the mm AND addr, try to load the content of right disk page
+                                    //(1) According to the mm AND addr, try to load the content of right disk page
                                     //    into the memory which page managed.
                                     //(2) According to the mm, addr AND page, setup the map of phy addr <---> logical addr
                                     //(3) make the page swappable.
@@ -393,7 +397,40 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
         }
    }
 #endif
-   ret = 0;
+	// get pte, if it failed stop and inform
+	if ((ptep = get_pte(mm->pgdir, addr, 1)) == NULL) {
+		cprintf("do_pgfault failed: get_pte unsuccessfully\n");
+		goto failed;
+	}
+	// if the physical address does not exist
+	// alloc a page and map it to the addr
+	if (*ptep == 0) { 
+		if (pgdir_alloc_page(mm->pgdir, addr, perm) == NULL) {
+		    cprintf("do_pgfault failed: pgdir_alloc_page unsuccessfully\n");
+		    goto failed;
+		}
+	}
+	else {
+		if (swap_init_ok) {
+		    struct Page *page=NULL;
+		    // load the content of the corresponding disk page
+		    // into the memory which page managed
+		    if ((ret = swap_in(mm, addr, &page)) != 0) {
+		        cprintf("do_pgfault failed: swap_in unsuccessfully\n");
+		        goto failed;
+		    } 
+		    // map the logical addr to the physical address
+		    page_insert(mm->pgdir, page, addr, perm);
+		    page->pra_vaddr = addr;
+		    // make the page swappable.
+		    swap_map_swappable(mm, addr, page, 1);
+		}
+		else {
+		    cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
+		    goto failed;
+		}
+	}
+    ret = 0;
 failed:
     return ret;
 }
