@@ -87,22 +87,22 @@ static struct proc_struct *
 alloc_proc(void) {
     struct proc_struct *proc = kmalloc(sizeof(struct proc_struct));
     if (proc != NULL) {
-    //LAB4:EXERCISE1 YOUR CODE
-    /*
-     * below fields in proc_struct need to be initialized
-     *       enum proc_state state;                      // Process state
-     *       int pid;                                    // Process ID
-     *       int runs;                                   // the running times of Proces
-     *       uintptr_t kstack;                           // Process kernel stack
-     *       volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU?
-     *       struct proc_struct *parent;                 // the parent process
-     *       struct mm_struct *mm;                       // Process's memory management field
-     *       struct context context;                     // Switch here to run process
-     *       struct trapframe *tf;                       // Trap frame for current interrupt
-     *       uintptr_t cr3;                              // CR3 register: the base addr of Page Directroy Table(PDT)
-     *       uint32_t flags;                             // Process flag
-     *       char name[PROC_NAME_LEN + 1];               // Process name
-     */
+        //LAB4:EXERCISE1 YOUR CODE
+        /*
+         * below fields in proc_struct need to be initialized
+         *       enum proc_state state;                      // Process state
+         *       int pid;                                    // Process ID
+         *       int runs;                                   // the running times of Proces
+         *       uintptr_t kstack;                           // Process kernel stack
+         *       volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU?
+         *       struct proc_struct *parent;                 // the parent process
+         *       struct mm_struct *mm;                       // Process's memory management field
+         *       struct context context;                     // Switch here to run process
+         *       struct trapframe *tf;                       // Trap frame for current interrupt
+         *       uintptr_t cr3;                              // CR3 register: the base addr of Page Directroy Table(PDT)
+         *       uint32_t flags;                             // Process flag
+         *       char name[PROC_NAME_LEN + 1];               // Process name
+         */
         proc->state = PROC_UNINIT;  // state to be uninitialized
         proc->pid = -1;             // id to be -1 before
         proc->runs = 0;             // have run for 0 time
@@ -115,12 +115,14 @@ alloc_proc(void) {
         proc->cr3 = boot_cr3;       // assign to the kernel PDT by default
         proc->flags = 0;            // flags set to be 0
         memset(proc->name, 0, PROC_NAME_LEN);   // name set to void
-     //LAB5 YOUR CODE : (update LAB4 steps)
-    /*
-     * below fields(add in LAB5) in proc_struct need to be initialized	
-     *       uint32_t wait_state;                        // waiting state
-     *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
-	 */
+         //LAB5 YOUR CODE : (update LAB4 steps)
+        /*
+         * below fields(add in LAB5) in proc_struct need to be initialized	
+         *       uint32_t wait_state;                        // waiting state
+         *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
+    	 */
+        proc->wait_state = 0;
+        proc->cptr = proc->optr = proc->yptr = NULL;
     }
     return proc;
 }
@@ -405,6 +407,7 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
         goto fork_out;
     }
     proc->parent = current;
+    assert(0 == current->wait_state);
     //    2. call setup_kstack to allocate a kernel stack for child process
     if (setup_kstack(proc) != 0) {
         goto bad_fork_cleanup_proc;
@@ -421,8 +424,9 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     {
         proc->pid = get_pid();
         hash_proc(proc);
-        list_add(&proc_list, &(proc->list_link));
-        ++nr_process;
+        // list_add(&proc_list, &(proc->list_link));
+        // ++nr_process;
+        set_links(proc);
     }
     local_intr_restore(intr_flag);
     //    6. call wakeup_proc to make the new child process RUNNABLE
