@@ -515,12 +515,17 @@ copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share) {
          *    page2kva(struct Page *page): return the kernel vritual addr of memory which page managed (SEE pmm.h)
          *    page_insert: build the map of phy addr of an Page with the linear addr la
          *    memcpy: typical memory copy function
-         *
-         * (1) find src_kvaddr: the kernel virtual address of page
-         * (2) find dst_kvaddr: the kernel virtual address of npage
-         * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
-         * (4) build the map of phy addr of  nage with the linear addr start
          */
+
+        // (1) find src_kvaddr: the kernel virtual address of page
+        void * kva_src = page2kva(page);
+        // (2) find dst_kvaddr: the kernel virtual address of npage
+        void * kva_dst = page2kva(npage);
+        // (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
+        memcpy(kva_dst, kva_src, PGSIZE);
+        // (4) build the map of phy addr of  nage with the linear addr start
+        ret = page_insert(to, npage, start, perm);
+        
         assert(ret == 0);
         }
         start += PGSIZE;
