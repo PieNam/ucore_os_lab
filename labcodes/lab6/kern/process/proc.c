@@ -87,38 +87,58 @@ static struct proc_struct *
 alloc_proc(void) {
     struct proc_struct *proc = kmalloc(sizeof(struct proc_struct));
     if (proc != NULL) {
-    //LAB4:EXERCISE1 YOUR CODE
-    /*
-     * below fields in proc_struct need to be initialized
-     *       enum proc_state state;                      // Process state
-     *       int pid;                                    // Process ID
-     *       int runs;                                   // the running times of Proces
-     *       uintptr_t kstack;                           // Process kernel stack
-     *       volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU?
-     *       struct proc_struct *parent;                 // the parent process
-     *       struct mm_struct *mm;                       // Process's memory management field
-     *       struct context context;                     // Switch here to run process
-     *       struct trapframe *tf;                       // Trap frame for current interrupt
-     *       uintptr_t cr3;                              // CR3 register: the base addr of Page Directroy Table(PDT)
-     *       uint32_t flags;                             // Process flag
-     *       char name[PROC_NAME_LEN + 1];               // Process name
-     */
-     //LAB5 YOUR CODE : (update LAB4 steps)
-    /*
-     * below fields(add in LAB5) in proc_struct need to be initialized	
-     *       uint32_t wait_state;                        // waiting state
-     *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
-	 */
-     //LAB6 YOUR CODE : (update LAB5 steps)
-    /*
-     * below fields(add in LAB6) in proc_struct need to be initialized
-     *     struct run_queue *rq;                       // running queue contains Process
-     *     list_entry_t run_link;                      // the entry linked in run queue
-     *     int time_slice;                             // time slice for occupying the CPU
-     *     skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
-     *     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process
-     *     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
-     */
+        //LAB4:EXERCISE1 YOUR CODE
+        /*
+         * below fields in proc_struct need to be initialized
+         *       enum proc_state state;                      // Process state
+         *       int pid;                                    // Process ID
+         *       int runs;                                   // the running times of Proces
+         *       uintptr_t kstack;                           // Process kernel stack
+         *       volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU?
+         *       struct proc_struct *parent;                 // the parent process
+         *       struct mm_struct *mm;                       // Process's memory management field
+         *       struct context context;                     // Switch here to run process
+         *       struct trapframe *tf;                       // Trap frame for current interrupt
+         *       uintptr_t cr3;                              // CR3 register: the base addr of Page Directroy Table(PDT)
+         *       uint32_t flags;                             // Process flag
+         *       char name[PROC_NAME_LEN + 1];               // Process name
+         */
+        proc->state = PROC_UNINIT;  // state to be uninitialized
+        proc->pid = -1;             // id to be -1 before
+        proc->runs = 0;             // have run for 0 time
+        proc->kstack = 0;           // doesn't have stack allocated yet
+        proc->need_resched = 0;     // doesn't need to be rescheduled
+        proc->parent = NULL;        // doesn't have parent by default
+        proc->mm = NULL;            // doesn't have memory allocated yet
+        memset(&(proc->context), 0, sizeof(struct context));
+        proc->tf = NULL;            // doesn't have trap frame by default
+        proc->cr3 = boot_cr3;       // assign to the kernel PDT by default
+        proc->flags = 0;            // flags set to be 0
+        memset(proc->name, 0, PROC_NAME_LEN);   // name set to void
+         //LAB5 YOUR CODE : (update LAB4 steps)
+        /*
+         * below fields(add in LAB5) in proc_struct need to be initialized	
+         *       uint32_t wait_state;                        // waiting state
+         *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
+    	 */
+        proc->wait_state = 0;
+        proc->cptr = proc->optr = proc->yptr = NULL;
+		 //LAB6 YOUR CODE : (update LAB5 steps)
+		/*
+		 * below fields(add in LAB6) in proc_struct need to be initialized
+		 *     struct run_queue *rq;                       // running queue contains Process
+		 *     list_entry_t run_link;                      // the entry linked in run queue
+		 *     int time_slice;                             // time slice for occupying the CPU
+		 *     skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
+		 *     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process
+		 *     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
+		 */
+        proc->rq = NULL;
+        list_init(&(proc->run_link));
+        proc->time_slice = 0;
+        proc->lab6_run_pool.left = proc->lab6_run_pool.right = proc->lab6_run_pool.parent = NULL;
+        proc->lab6_stride = 0;
+        proc->lab6_priority = 0;
     }
     return proc;
 }
@@ -399,12 +419,36 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
      */
 
     //    1. call alloc_proc to allocate a proc_struct
+    if (NULL == (proc = alloc_proc())) {
+        goto fork_out;
+    }
+    proc->parent = current;
+    assert(0 == current->wait_state);
     //    2. call setup_kstack to allocate a kernel stack for child process
+    if (setup_kstack(proc) != 0) {
+        goto bad_fork_cleanup_proc;
+    }
     //    3. call copy_mm to dup OR share mm according clone_flag
+    if (copy_mm(clone_flags, proc) != 0) {
+        goto bad_fork_cleanup_kstack;
+    }
     //    4. call copy_thread to setup tf & context in proc_struct
+    copy_thread(proc, stack, tf);
     //    5. insert proc_struct into hash_list && proc_list
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+        proc->pid = get_pid();
+        hash_proc(proc);
+        // list_add(&proc_list, &(proc->list_link));
+        // ++nr_process;
+        set_links(proc);
+    }
+    local_intr_restore(intr_flag);
     //    6. call wakeup_proc to make the new child process RUNNABLE
+    wakeup_proc(proc);
     //    7. set ret vaule using child proc's pid
+    ret = proc->pid;
 
 	//LAB5 YOUR CODE : (update LAB4 steps)
    /* Some Functions
@@ -612,6 +656,11 @@ load_icode(unsigned char *binary, size_t size) {
      *          tf_eip should be the entry point of this binary program (elf->e_entry)
      *          tf_eflags should be set to enable computer to produce Interrupt
      */
+    tf->tf_cs = USER_CS;
+    tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+    tf->tf_esp = USTACKTOP;
+    tf->tf_eip = elf->e_entry;
+    tf->tf_eflags = FL_IF;
     ret = 0;
 out:
     return ret;
