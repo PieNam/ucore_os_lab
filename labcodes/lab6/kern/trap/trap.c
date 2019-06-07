@@ -243,7 +243,6 @@ trap_dispatch(struct trapframe *tf) {
          * IMPORTANT FUNCTIONS:
 	     * sched_class_proc_tick
          */
-    case IRQ_OFFSET + IRQ_TIMER:
         ++ticks;
         sched_class_proc_tick(current);
         break;
