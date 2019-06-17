@@ -375,6 +375,19 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
     }
     return NULL;          // (8) return page table entry
 #endif
+    pde_t *pdep = &pgdir[PDX(la)]; // find page directory entry
+    if (!(*pdep & PTE_P)) { //check if entry is not present
+        struct Page *page;
+        // check if creating is needed, then alloc page for page table 
+        if (!create || !(page = alloc_page())) return NULL;
+        set_page_ref(page, 1); // set page reference
+        uintptr_t pa = page2pa(page); // get linear address of page
+        memset(KADDR(pa), 0, PGSIZE); // clear page content
+        // set page directory entry's permission
+        *pdep = pa | PTE_U | PTE_W | PTE_P;
+    }
+    // return page table entry
+    return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
 }
 
 //get_page - get related Page struct for linear address la using PDT pgdir
@@ -420,6 +433,13 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
                                   //(6) flush tlb
     }
 #endif
+    if(*ptep & PTE_P) { // if it present
+		struct Page *page = pte2page(*ptep); // get page
+		page_ref_dec(page); // decrease page_ref
+		if(page->ref==0) free_page(page); // free the page when its ref==0
+		*ptep = 0; // invalidate pte
+        tlb_invalidate(pgdir, la); //flush tlb
+    }
 }
 
 void
@@ -495,12 +515,17 @@ copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share) {
          *    page2kva(struct Page *page): return the kernel vritual addr of memory which page managed (SEE pmm.h)
          *    page_insert: build the map of phy addr of an Page with the linear addr la
          *    memcpy: typical memory copy function
-         *
-         * (1) find src_kvaddr: the kernel virtual address of page
-         * (2) find dst_kvaddr: the kernel virtual address of npage
-         * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
-         * (4) build the map of phy addr of  nage with the linear addr start
          */
+
+        // (1) find src_kvaddr: the kernel virtual address of page
+        void * kva_src = page2kva(page);
+        // (2) find dst_kvaddr: the kernel virtual address of npage
+        void * kva_dst = page2kva(npage);
+        // (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
+        memcpy(kva_dst, kva_src, PGSIZE);
+        // (4) build the map of phy addr of  nage with the linear addr start
+        ret = page_insert(to, npage, start, perm);
+        
         assert(ret == 0);
         }
         start += PGSIZE;
