@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "default_sched.h": "c",
+        "sched.h": "c"
+    }
+}
